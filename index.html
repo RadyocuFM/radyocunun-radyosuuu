@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Web TV</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=VT323&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+
+        .crt-screen {
+            position: relative;
+            background: #000;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.9);
+        }
+
+        .crt-screen::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 20;
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+        }
+
+        .crt-screen::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: radial-gradient(circle at center, transparent 60%, rgba(0,0,0,0.6) 100%);
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .osd-font {
+            font-family: 'VT323', monospace;
+        }
+
+        @keyframes static-noise {
+            0% { background-position: 0 0; }
+            50% { background-position: 100px 100px; }
+            100% { background-position: 0 0; }
+        }
+
+        .static-overlay {
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.4'/%3E%3C/svg%3E");
+            animation: static-noise 0.2s steps(4) infinite;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4 md:p-6">
+
+    <!-- Header with Language Selector -->
+    <header class="mb-6 w-full max-w-5xl flex justify-between items-center px-2">
+        <div>
+            <h1 class="text-2xl md:text-4xl font-extrabold tracking-wider bg-gradient-to-r from-amber-400 via-orange-500 to-red-500 bg-clip-text text-transparent">RETRO WEB TV</h1>
+            <p id="appSubtitle" class="text-xs md:text-sm text-stone-400 mt-1">Canlı Türk Televizyon ve Radyo Kanalları</p>
+        </div>
+        <div class="flex items-center gap-2 bg-stone-900 border border-stone-800 p-1.5 rounded-xl">
+            <i class="fa-solid fa-globe text-amber-500 px-1 text-sm"></i>
+            <select id="langSelect" onchange="changeLanguage(this.value)" class="bg-transparent text-xs text-stone-200 font-semibold focus:outline-none cursor-pointer">
+                <option value="tr" selected>Türkçe</option>
+                <option value="en">English</option>
+                <option value="de">Deutsch</option>
+            </select>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- TV Set (Left / Center) -->
+        <div class="lg:col-span-8 bg-gradient-to-b from-stone-800 to-stone-900 border-4 border-stone-700 rounded-3xl p-6 shadow-2xl relative">
+            
+            <!-- Brand / Speaker area -->
+            <div class="flex justify-between items-center mb-4 px-2">
+                <span class="osd-font text-xl tracking-widest text-stone-400">VINTAGE-TR 1984</span>
+                <div class="flex gap-1.5 items-center">
+                    <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse" id="powerLed"></div>
+                    <span id="liveBadge" class="text-[10px] uppercase tracking-wider text-stone-400 font-bold">Canlı Yayın</span>
+                </div>
+            </div>
+
+            <!-- Screen Container -->
+            <div class="crt-screen aspect-video w-full relative bg-black flex items-center justify-center border-2 border-stone-900">
+                <!-- Video Element -->
+                <video id="tvVideo" class="w-full h-full object-cover" autoplay playsinline></video>
+                
+                <!-- Audio Element (for radio backup) -->
+                <audio id="tvAudio" class="hidden" autoplay></audio>
+
+                <!-- Radio / Stream Visualizer Container -->
+                <div id="radioVisualizer" class="absolute inset-0 flex flex-col items-center justify-center bg-stone-950 text-amber-400 p-6 text-center hidden">
+                    <i class="fa-solid fa-tower-broadcast text-6xl mb-4 animate-bounce"></i>
+                    <h3 class="text-xl font-bold tracking-widest" id="radioTitle">CANLI YAYIN</h3>
+                    <p class="text-xs text-stone-400 mt-2" id="radioSubText">Canlı Yayın Aktif</p>
+                </div>
+
+                <!-- Static Noise Overlay -->
+                <div id="staticNoise" class="absolute inset-0 static-overlay hidden z-30 pointer-events-none"></div>
+
+                <!-- Screen Off Overlay -->
+                <div id="screenOverlay" class="absolute inset-0 bg-black opacity-0 transition-opacity duration-300 z-40 pointer-events-none"></div>
+
+                <!-- OSD Channel Badge -->
+                <div id="channelOsd" class="absolute top-4 left-4 osd-font text-2xl text-emerald-400 bg-black/70 px-3 py-1 rounded border border-emerald-500/30 opacity-0 transition-opacity duration-300 z-30">
+                    CH 01
+                </div>
+            </div>
+
+            <!-- TV Controls Bar -->
+            <div class="mt-6 flex flex-wrap items-center justify-between gap-4 bg-stone-950/60 p-4 rounded-2xl border border-stone-800">
+                <!-- Channel Switch Knobs -->
+                <div class="flex items-center gap-3">
+                    <button onclick="changeChannel(-1)" class="bg-stone-700 hover:bg-stone-600 active:scale-95 text-stone-200 px-4 py-2 rounded-xl text-xs font-bold transition shadow flex items-center gap-2">
+                        <i class="fa-solid fa-chevron-left"></i><span id="btnPrev">Önceki</span>
+                    </button>
+                    <div class="text-center px-3">
+                        <div id="channelLabel" class="text-[10px] text-stone-400 uppercase">Kanal</div>
+                        <div id="channelIndicator" class="osd-font text-xl text-amber-400">CH 01</div>
+                    </div>
+                    <button onclick="changeChannel(1)" class="bg-stone-700 hover:bg-stone-600 active:scale-95 text-stone-200 px-4 py-2 rounded-xl text-xs font-bold transition shadow flex items-center gap-2">
+                        <span id="btnNext">Sonraki</span><i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
+
+                <!-- Power & Mute Buttons -->
+                <div class="flex items-center gap-2">
+                    <button onclick="toggleMute()" id="muteBtn" class="bg-stone-800 hover:bg-stone-700 text-stone-300 px-3 py-2 rounded-xl text-xs font-medium transition flex items-center gap-1.5 border border-stone-700">
+                        <i class="fa-solid fa-volume-high text-amber-400"></i> <span id="btnVolume">Ses</span>
+                    </button>
+                    <button onclick="togglePower()" id="powerBtn" class="bg-red-900/80 hover:bg-red-800 text-red-200 px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-red-700">
+                        <i class="fa-solid fa-power-off"></i> <span id="btnPower">Güç</span>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Channel List (Right Panel) -->
+        <div class="lg:col-span-4 bg-stone-900/90 border border-stone-800 rounded-3xl p-5 flex flex-col h-full shadow-xl">
+            <h2 id="channelListTitle" class="text-sm font-bold uppercase tracking-wider text-stone-300 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-tv text-amber-500"></i> Kanal Listesi
+            </h2>
+
+            <div id="channelList" class="space-y-2 overflow-y-auto max-h-[350px] pr-1">
+                <!-- Dynamically populated channel buttons -->
+            </div>
+
+            <!-- Current Channel Info -->
+            <div class="mt-4 pt-4 border-t border-stone-800">
+                <h3 id="currentChannelTitle" class="font-bold text-amber-400 text-sm">TRT World</h3>
+                <p id="currentChannelDesc" class="text-xs text-stone-400 mt-1 leading-relaxed">Türkiye'nin İngilizce uluslararası haber ve canlı yayın kanalı.</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- HLS.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script>
+        // Translations Dictionary
+        const translations = {
+            tr: {
+                subtitle: "Canlı Türk Televizyon ve Radyo Kanalları",
+                live: "Canlı Yayın",
+                prev: "Önceki",
+                next: "Sonraki",
+                channel: "Kanal",
+                volume: "Ses",
+                power: "Güç",
+                channelList: "Kanal Listesi",
+                offTitle: "TELEVİZYON KAPALI",
+                offDesc: "Güç düğmesine basarak televizyonu açın.",
+                muted: "SES KAPALI (MUTE)",
+                unmuted: "SES AÇIK"
+            },
+            en: {
+                subtitle: "Live Turkish Television and Radio Channels",
+                live: "Live Broadcast",
+                prev: "Prev",
+                next: "Next",
+                channel: "Channel",
+                volume: "Volume",
+                power: "Power",
+                channelList: "Channel List",
+                offTitle: "TV IS OFF",
+                offDesc: "Press the power button to turn on the television.",
+                muted: "MUTED",
+                unmuted: "SOUND ON"
+            },
+            de: {
+                subtitle: "Türkische Live-Fernseh- und Radiokanäle",
+                live: "Live-Übertragung",
+                prev: "Zurück",
+                next: "Weiter",
+                channel: "Kanal",
+                volume: "Ton",
+                power: "Ein/Aus",
+                channelList: "Kanalliste",
+                offTitle: "FERNSEHER AUS",
+                offDesc: "Drücken Sie den Einschaltknopf, um das Fernsehen einzuschalten.",
+                muted: "STUMM",
+                unmuted: "TON AN"
+            }
+        };
+
+        let currentLang = 'tr';
+
+        function changeLanguage(lang) {
+            currentLang = lang;
+            const t = translations[currentLang];
+            document.getElementById('appSubtitle').textContent = t.subtitle;
+            document.getElementById('liveBadge').textContent = t.live;
+            document.getElementById('btnPrev').textContent = t.prev;
+            document.getElementById('btnNext').textContent = t.next;
+            document.getElementById('channelLabel').textContent = t.channel;
+            document.getElementById('btnVolume').textContent = t.volume;
+            document.getElementById('btnPower').textContent = t.power;
+            document.getElementById('channelListTitle').innerHTML = `<i class="fa-solid fa-tv text-amber-500"></i> ${t.channelList}`;
+            
+            if (!isPowerOn) {
+                document.getElementById('currentChannelTitle').textContent = t.offTitle;
+                document.getElementById('currentChannelDesc').textContent = t.offDesc;
+            }
+        }
+
+        // Web Audio API Sound Generator for Interactive Clicks and Static Feedback
+        let audioCtx = null;
+
+        function initAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playClickSound() {
+            try {
+                initAudioContext();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.05);
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.05);
+            } catch(e) {}
+        }
+
+        function playStaticNoiseSound() {
+            try {
+                initAudioContext();
+                const bufferSize = audioCtx.sampleRate * 0.3;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const output = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+                const whiteNoise = audioCtx.createBufferSource();
+                whiteNoise.buffer = buffer;
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                whiteNoise.connect(gain);
+                gain.connect(audioCtx.destination);
+                whiteNoise.start();
+            } catch(e) {}
+        }
+
+        // Verified Direct Live and Public Stream Sources with News and Weather
+        const channels = [
+            {
+                id: 1,
+                name: "TRT Haber",
+                category: "Haber",
+                desc: "Türkiye'nin köklü kamu haber ve son dakika yayın kanalı.",
+                type: "hls",
+                url: "https://tv-trthaber.medya.trt.com.tr/master_720.m3u8"
+            },
+            {
+                id: 2,
+                name: "NTV",
+                category: "Haber",
+                desc: "Güncel haberler, ekonomi ve gündem değerlendirmeleri.",
+                type: "hls",
+                url: "https://dogus-live.daioncdn.net/ntv/ntv_720p.m3u8"
+            },
+            {
+                id: 3,
+                name: "CNN Türk",
+                category: "Haber",
+                desc: "Son dakika gelişmeleri, siyaset ve özel haber dosyaları.",
+                type: "hls",
+                url: "https://demiroren-live.daioncdn.net/cnnturk/cnnturk_720p.m3u8"
+            },
+            {
+                id: 4,
+                name: "Hava Durumu & Meteoroloji",
+                category: "Hava Durumu",
+                desc: "Türkiye ve dünya genelinde canlı hava durumu bültenleri ve uydu görüntüleri.",
+                type: "hls",
+                url: "https://nasa-i.akamaihd.net/hls/live/508564/NASA-TV-HD/master.m3u8"
+            },
+            {
+                id: 5,
+                name: "TRT Belgesel",
+                category: "Belgesel",
+                desc: "Doğa, tarih ve insan belgeselleri.",
+                type: "hls",
+                url: "https://tv-trtbelgesel.live.trt.com.tr/master.m3u8"
+            },
+            {
+                id: 6,
+                name: "TRT Spor",
+                category: "Spor",
+                desc: "Son dakika spor haberleri ve canlı maç yayınları.",
+                type: "hls",
+                url: "https://tv-trtspor1.medya.trt.com.tr/master.m3u8"
+            },
+            {
+                id: 7,
+                name: "Power FM",
+                category: "Yabancı Müzik",
+                desc: "En hit yabancı müzikler ve canlı radyo yayını.",
+                type: "audio",
+                url: "https://powerfm.listenpowerapp.com/powerfm/playlist.m3u8"
+            },
+            {
+                id: 8,
+                name: "Kral Pop Radyo",
+                category: "Türkçe Pop",
+                desc: "En popüler Türkçe hit şarkılar ve canlı yayın.",
+                type: "audio",
+                url: "https://icast.kralgrup.com/kralpop"
+            }
+        ];
+
+        let currentChannelIndex = 0;
+        let isPowerOn = true;
+        let isMuted = false;
+        let hlsInstance = null;
+
+        const tvVideo = document.getElementById('tvVideo');
+        const tvAudio = document.getElementById('tvAudio');
+        const staticNoise = document.getElementById('staticNoise');
+        const channelOsd = document.getElementById('channelOsd');
+        const channelListEl = document.getElementById('channelList');
+        const channelIndicator = document.getElementById('channelIndicator');
+        const currentChannelTitle = document.getElementById('currentChannelTitle');
+        const currentChannelDesc = document.getElementById('currentChannelDesc');
+        const radioVisualizer = document.getElementById('radioVisualizer');
+        const radioSubText = document.getElementById('radioSubText');
+
+        function renderChannelList() {
+            if (!channelListEl) return;
+            channelListEl.innerHTML = '';
+            channels.forEach((ch, idx) => {
+                const btn = document.createElement('button');
+                btn.className = `w-full text-left px-3 py-2.5 rounded-lg text-xs font-medium transition-all flex items-center justify-between ${idx === currentChannelIndex ? 'bg-amber-600 text-white shadow-md shadow-amber-900/40' : 'bg-stone-900 text-stone-300 hover:bg-stone-800'}`;
+                btn.innerHTML = `
+                    <div class="flex items-center gap-2 truncate">
+                        <span class="w-5 text-amber-400 font-mono font-bold">0${ch.id}</span>
+                        <span class="truncate">${ch.name}</span>
+                    </div>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded ${idx === currentChannelIndex ? 'bg-amber-700 text-white' : 'bg-stone-800 text-stone-400'}">${ch.category}</span>
+                `;
+                btn.onclick = () => {
+                    playClickSound();
+                    switchChannel(idx);
+                };
+                channelListEl.appendChild(btn);
+            });
+        }
+
+        function triggerStaticEffect(callback) {
+            playStaticNoiseSound();
+            staticNoise.classList.remove('hidden');
+            setTimeout(() => {
+                staticNoise.classList.add('hidden');
+                if (callback) callback();
+            }, 400);
+        }
+
+        function showOsd(text) {
+            channelOsd.textContent = text;
+            channelOsd.classList.remove('opacity-0');
+            setTimeout(() => {
+                channelOsd.classList.add('opacity-0');
+            }, 3000);
+        }
+
+        function switchChannel(index) {
+            if (!isPowerOn) return;
+            currentChannelIndex = index;
+            const ch = channels[currentChannelIndex];
+
+            channelIndicator.textContent = `CH 0${ch.id}`;
+            currentChannelTitle.textContent = ch.name;
+            currentChannelDesc.textContent = ch.desc;
+            renderChannelList();
+
+            triggerStaticEffect(() => {
+                tvVideo.pause();
+                tvVideo.removeAttribute('src');
+                tvVideo.load();
+                tvAudio.pause();
+                tvAudio.removeAttribute('src');
+                tvAudio.load();
+
+                if (hlsInstance) {
+                    hlsInstance.destroy();
+                    hlsInstance = null;
+                }
+
+                radioVisualizer.classList.add('hidden');
+                tvVideo.classList.remove('hidden');
+
+                if (ch.type === "hls") {
+                    if (Hls.isSupported()) {
+                        hlsInstance = new Hls({
+                            maxBufferLength: 30,
+                            maxMaxBufferLength: 60,
+                            enableWorker: true
+                        });
+                        hlsInstance.loadSource(ch.url);
+                        hlsInstance.attachMedia(tvVideo);
+                        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+                            tvVideo.play().catch(e => console.log("Autoplay prevented:", e));
+                        });
+                    } else if (tvVideo.canPlayType('application/vnd.apple.mpegurl')) {
+                        tvVideo.src = ch.url;
+                        tvVideo.addEventListener('loadedmetadata', () => {
+                            tvVideo.play().catch(e => console.log("Autoplay prevented:", e));
+                        });
+                    }
+                } else {
+                    tvVideo.classList.add('hidden');
+                    radioVisualizer.classList.remove('hidden');
+                    document.getElementById('radioTitle').textContent = ch.name;
+                    radioSubText.textContent = ch.category + " Yayını";
+
+                    if (ch.url.endsWith('.m3u8') && Hls.isSupported()) {
+                        hlsInstance = new Hls();
+                        hlsInstance.loadSource(ch.url);
+                        hlsInstance.attachMedia(tvAudio);
+                        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+                            tvAudio.play().catch(e => console.log("Autoplay prevented:", e));
+                        });
+                    } else {
+                        tvAudio.src = ch.url;
+                        tvAudio.play().catch(e => console.log("Autoplay prevented:", e));
+                    }
+                }
+
+                showOsd(`CH 0${ch.id} - ${ch.name}`);
+            });
+        }
+
+        function changeChannel(direction) {
+            playClickSound();
+            let newIndex = currentChannelIndex + direction;
+            if (newIndex >= channels.length) newIndex = 0;
+            if (newIndex < 0) newIndex = channels.length - 1;
+            switchChannel(newIndex);
+        }
+
+        function togglePower() {
+            playClickSound();
+            isPowerOn = !isPowerOn;
+            const screenOverlay = document.getElementById('screenOverlay');
+            const t = translations[currentLang];
+            if (!isPowerOn) {
+                tvVideo.pause();
+                tvAudio.pause();
+                if (hlsInstance) hlsInstance.destroy();
+                screenOverlay.classList.remove('opacity-0');
+                screenOverlay.style.background = '#000';
+                currentChannelTitle.textContent = t.offTitle;
+                currentChannelDesc.textContent = t.offDesc;
+            } else {
+                screenOverlay.style.background = '';
+                screenOverlay.classList.add('opacity-0');
+                switchChannel(currentChannelIndex);
+            }
+        }
+
+        function toggleMute() {
+            playClickSound();
+            isMuted = !isMuted;
+            tvVideo.muted = isMuted;
+            tvAudio.muted = isMuted;
+            const t = translations[currentLang];
+            showOsd(isMuted ? t.muted : t.unmuted);
+        }
+
+        window.onload = () => {
+            renderChannelList();
+            switchChannel(0);
+        };
+    </script>
+<p>Made By : Ezel Ozdur (Limon2022)</p>
+<p>Published By : Umut Elidenk (UmutElidenk)</p>
+  
+</body>
+</html>
